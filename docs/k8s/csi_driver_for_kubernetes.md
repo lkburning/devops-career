@@ -19,3 +19,5 @@ cp linux-amd64/helm .local/bin/
 ```
 
 ### 安装 NFS CSI Driver 并且配置 storage Class
+
+请查看该文档 https://github.com/lkburning/devops-career/blob/main/nfs-csi/Readme.md
