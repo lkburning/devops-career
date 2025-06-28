@@ -1,0 +1,17 @@
+storageClass:
+  create: true
+  name: nfs-csi
+#   annotations:
+#     storageclass.kubernetes.io/is-default-class: "true"
+  parameters:
+  parameters:
+    server: 192.168.1.9
+    share: /volume1/k8s_pv/ # The share location on the NFS server
+    # csi.storage.k8s.io/provisioner-secret is only needed for providing mountOptions in DeleteVolume
+    # csi.storage.k8s.io/provisioner-secret-name: "mount-options"
+    # csi.storage.k8s.io/provisioner-secret-namespace: "default"
+    mountPermissions: '0755' 
+  reclaimPolicy: Delete
+  volumeBindingMode: Immediate
+  mountOptions:
+    - nfsvers=4

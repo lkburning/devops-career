@@ -22,99 +22,76 @@
 
 由于k8s 已经使用 containerd 作为默认的运行时，接下来我们将会安装 containerd 作为运行时。
 
-在Ubunut 环境有两种方式安装Containerd, 一种是通过“From the official binaries“，第二种便是 ”From `apt-get` or `dnf`”，出于方便考虑，我们使用apt-get 进行安装
+在Ubunut 环境有两种方式安装Containerd, 一种是通过“From the official binaries“
 
-### From apt-get install Containerd
+### From the official binaries
 
-office website: https://docs.docker.com/engine/install/ubuntu/
+office website: https://github.com/containerd/containerd/blob/main/docs/getting-started.md
 
-#### [Uninstall old versions](https://docs.docker.com/engine/install/ubuntu/#uninstall-old-versions)
+#### Step 1 Installing containerd
+
+Download the `containerd-<VERSION>-<OS>-<ARCH>.tar.gz` archive from [https://github.com/containerd/containerd/releases](https://github.com/containerd/containerd/releases) , verify its sha256sum, and extract it under `/usr/local`:
+
+```shell
+$ wget  https://github.com/containerd/containerd/releases/download/v2.1.1/containerd-2.1.1-linux-amd64.tar.gz
+$ sudo tar Cxzvf /usr/local/ containerd-2.1.1-linux-amd64.tar.gz
+bin/
+bin/containerd-shim-runc-v2
+bin/containerd
+bin/containerd-stress
+bin/ctr
+```
+
+##### systemd and proxy configure
+
+If you intend to start containerd via systemd, you should also download the `containerd.service` unit file from [https://raw.githubusercontent.com/containerd/containerd/main/containerd.service](https://raw.githubusercontent.com/containerd/containerd/main/containerd.service) into `/lib/systemd/system/containerd.service`, and run the following commands:
+
+```shell
+$ sudo vim /lib/systemd/system/containerd.service
+$ cat /lib/systemd/system/containerd.service
+---------------------------------------------------
+[Service]
+#uncomment to enable the experimental sbservice (sandboxed) version of containerd/cri integration
+#Environment="ENABLE_CRI_SANDBOXES=sandboxed"
+Environment="HTTP_PROXY=http://192.168.1.125:7890/"
+Environment="HTTPS_PROXY=http://192.168.1.125:7890/"
+Environment="NO_PROXY=localhost,127.0.0.1,192.168.1.0/24,10.0.0.0/8"
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/bin/containerd
+------------------------------------------------------
+
+$ systemctl daemon-reload
+$systemctl enable --now containerd
+```
+
+#### Step 2: Installing runc
+
+Download the `runc.<ARCH>` binary from [https://github.com/opencontainers/runc/releases](https://github.com/opencontainers/runc/releases) , verify its sha256sum, and install it as `/usr/local/sbin/runc`.
+
+```shell
+$ wget https://github.com/opencontainers/runc/releases/download/v1.3.0/runc.amd64
+$ sudo install -m 755 runc.amd64 /usr/local/sbin/runc
+```
+
+#### Step 3: Installing CNI plugins
+
+Download the `cni-plugins-<OS>-<ARCH>-<VERSION>.tgz` archive from [https://github.com/containernetworking/plugins/releases](https://github.com/containernetworking/plugins/releases) , verify its sha256sum, and extract it under `/opt/cni/bin`:
+
+```shell
+$ wget https://github.com/containernetworking/plugins/releases/download/v1.7.1/cni-plugins-linux-amd64-v1.7.1.tgz
+$ mkdir -p /opt/cni/bin
+$ tar Cxzvf /opt/cni/bin cni-plugins-linux-amd64-v1.7.1.tgz
 
 ```
-for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done
+
+#### step 4 start and generate the default config
+
+```shell
+$ containerd config default > containerd.config
+$ sudo mkdir /etc/containerd/
+$ sudo cp containerd.config /etc/containerd/config.toml
+$ sudo systemctl start containerd
 ```
-
-#### [Install using the `apt` repository](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
-
-1. Set up Docker's `apt` repository.
-
-   ```
-   # Add Docker's official GPG key:
-   sudo apt-get update
-   sudo apt-get install ca-certificates curl
-   sudo install -m 0755 -d /etc/apt/keyrings
-   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-   sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-   # Add the repository to Apt sources:
-   echo \
-     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-     $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
-     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-   sudo apt-get update
-   ```
-2. Install the Docker packages.
-
-   ```
-   sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   ```
-3. [Manage Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user)
-
-   ```
-   sudo groupadd docker
-   sudo usermod -aG docker $USER
-   newgrp docker
-   ```
-
-### 配置Containerd 以及Docker Daemon 使用Proxy
-
-由于国内环境不能访问大部分的k8s 的官方镜像，因此我们需要配置 containerd 以及 docker daemon 去使用proxy。通过如上方式安装的containerd 以及 docker daemon 都会自动的创建 systemd 的service, 因此我们只需要更新service unit 即可
-
-1. 配置containerd 的 proxy
-
-   ```
-   sudo vim /lib/systemd/system/containerd.service
-   cat /lib/systemd/system/containerd.service
-   ---------------------------------------------------
-   [Service]
-   #uncomment to enable the experimental sbservice (sandboxed) version of containerd/cri integration
-   #Environment="ENABLE_CRI_SANDBOXES=sandboxed"
-   Environment="HTTP_PROXY=http://192.168.1.125:7890/"
-   Environment="HTTPS_PROXY=http://192.168.1.125:7890/"
-   Environment="NO_PROXY=localhost,127.0.0.1,192.168.1.0/24,10.0.0.0/8"
-   ExecStartPre=-/sbin/modprobe overlay
-   ExecStart=/usr/bin/containerd
-   ------------------------------------------------------
-
-   ```
-2. 配置docker daemon 的proxy
-
-   ```
-   sudo vim /lib/systemd/system/docker.service
-   cat  /lib/systemd/system/docker.service
-   -------------------------------------------
-   [Service]
-   Type=notify
-   # the default is not to use systemd for cgroups because the delegate issues still
-   # exists and systemd currently does not support the cgroup feature set required
-   # for containers run by docker
-   Environment="HTTP_PROXY=http://192.168.1.125:7890/"
-   Environment="HTTPS_PROXY=http://192.168.1.125:7890/"
-   Environment="NO_PROXY=localhost,127.0.0.1,192.168.1.0/24,10.0.0.0/8"
-   ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
-   ExecReload=/bin/kill -s HUP $MAINPID
-   TimeoutStartSec=0
-   RestartSec=2
-   Restart=always
-   -------------------------------------------
-   ```
-3. 重新reload 更新的service unit, 然后重启docker 以及containerd 以应用如上的修改
-
-   ```
-   sudo systemctl daemon-reload
-   sudo systemctl restart docker
-   sudo systemctl restart containerd
-   ```
 
 ### 安装kubelet 并且安装 kubeadm ，并且禁止swap
 
@@ -130,8 +107,8 @@ for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker c
 
    ```
    sudo apt-get install -y apt-transport-https ca-certificates curl gpg
-   curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-   echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+   curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+   echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
    sudo apt-get update
    sudo apt-get install -y kubelet kubeadm kubectl
    sudo apt-mark hold kubelet kubeadm kubectl
